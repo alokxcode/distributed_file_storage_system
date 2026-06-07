@@ -4,26 +4,26 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"testing"
+"testing"
 )
 
 // tests newStore
 func TestStore(t *testing.T) {
-	opts := StoreOpts {
+	fileStoreOpts := FileStoreOpts {
 		pathTransformFunc: CASPathTransformFunc,
 	}
 
-	s := NewStore(opts)
-	fmt.Println("store created",s)
+	s := NewFileStore(fileStoreOpts)
+	fmt.Println("fileStore created",s)
 }
 
 // tests WriteSteam
 func TestWriteStream(t *testing.T) {
-	opts := StoreOpts {
+	opts := FileStoreOpts {
 		pathTransformFunc: CASPathTransformFunc,
 	}
 
-	s := NewStore(opts)
+	s := NewFileStore(opts)
 	data := []byte("first jpg")
 	key := "file" 
 
@@ -32,41 +32,49 @@ func TestWriteStream(t *testing.T) {
 		t.Error(err)
 	}
 	
+	
 }
 
 // tests ReadStream
 func TestReadStream(t *testing.T) {
-	opts := StoreOpts {
+	opts := FileStoreOpts {
 		pathTransformFunc: CASPathTransformFunc,
 	}
 
-	s := NewStore(opts)
+	s := NewFileStore(opts)
 	data := []byte("first jpg")
 	key := "second_file"
-	r,err := s.Read(key)
+
+	// Write the file to the store first before reading it
+	err := s.WriteStream(key, bytes.NewReader(data))
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	b,err := ioutil.ReadAll(r)
+	r, err := s.Read(key)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
+	}
+
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
 	}
 	fmt.Println(string(b))
 
 	if string(b) != string(data) {
-		t.Errorf("want %s have %s",data,b)
+		t.Errorf("want %s have %s", data, b)
 	}
 }
 
 
 // tests delete
 func TestDelete(t *testing.T) {
-	opts := StoreOpts {
+	opts := FileStoreOpts {
 		pathTransformFunc: CASPathTransformFunc,
 	}
 
-	s := NewStore(opts)
+	s := NewFileStore(opts)
 	key := "second_file"
 
 	err := s.Delete(key)
@@ -77,11 +85,11 @@ func TestDelete(t *testing.T) {
 
 // tests DeleteAll
 func TestDeleteAll(t *testing.T) {
-	opts := StoreOpts {
+	opts := FileStoreOpts {
 		pathTransformFunc: CASPathTransformFunc,
 	}
 
-	s := NewStore(opts)
+	s := NewFileStore(opts)
 
 	err := s.DeleteAll()
 	if err != nil {

@@ -6,144 +6,144 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 )
 
-const DefaultRootDir = "DJAlok_Network"
+const DefaultRootDir = "alokxcode_Network"
 
 type PathKey struct {
-	FirstPath string
-	PathName string
+	FirstDir string
+	DirPath  string
 	FileName string
-}
-
-// returns full path
-func (p *PathKey) FullPath() string {
-	return fmt.Sprintf("%s/%s",p.PathName,p.FileName)
+	// DirPath/FileName
+	FullPath string
 }
 
 // Path Transformer interface func
-type pathTransformFunc func(string) PathKey 
+type pathTransformFunc func(string) PathKey
 
 // Default Path Transformer
 var DefaultPathTransformFunc = func(key string) PathKey {
 	return PathKey{
-		PathName: key,
+		DirPath:  key,
 		FileName: key,
-	} 
+		FullPath: fmt.Sprintf("%s/%s", key, key),
+	}
 }
 
-// content addressable storage path transformer 
+// content addressable storage path transformer
 func CASPathTransformFunc(key string) PathKey {
-	hash := sha1.Sum([]byte(key))  
-	hashStr := hex.EncodeToString(hash[:]) 
+	hash := sha1.Sum([]byte(key))
+	hashStr := hex.EncodeToString(hash[:])
 
 	blockSize := 8
 	sliceLen := len(hashStr) / blockSize
-	paths := make([]string,sliceLen)
+	paths := make([]string, sliceLen)
 
-	for i:= range sliceLen {
-		from := i*blockSize
-		to := (i*blockSize)+blockSize
+	for i := range sliceLen {
+		from := i * blockSize
+		to := (i * blockSize) + blockSize
 		paths[i] = hashStr[from:to]
 	}
-	pathName := strings.Join(paths,"/")
+	pathName := strings.Join(paths, "/")
 
 	return PathKey{
-		FirstPath: paths[0],
-		PathName: pathName,
+		FirstDir: paths[0],
+		DirPath:  pathName,
 		FileName: hashStr,
+		FullPath: fmt.Sprintf("%s/%s", pathName, hashStr),
 	}
 }
 
 // store config
-type StoreOpts struct {
-	// root is the folder name of root containing all the folder/files of the system.
-	root string
+type FileStoreOpts struct {
+	// StorageRoot is the folder name of root containing all the folder/files of the system.
+	StorageRoot       string
 	pathTransformFunc pathTransformFunc
-
 }
 
-type Store struct {
-	StoreOpts
+type FileStore struct {
+	FileStoreOpts
 }
 
-func NewStore(opts StoreOpts) *Store {
-	if len(opts.root) == 0 {
-		opts.root = DefaultRootDir
-	} 
-	return &Store {
-		StoreOpts: opts,
+func NewFileStore(opts FileStoreOpts) *FileStore {
+	if len(opts.StorageRoot) == 0 {
+		opts.StorageRoot = DefaultRootDir
+	}
+	return &FileStore{
+		FileStoreOpts: opts,
 	}
 }
 
-func (s *Store) WriteStream(key string, r io.Reader) error {
+func (s *FileStore) WriteStream(key string, r io.Reader) error {
 	pathKey := s.pathTransformFunc(key)
+	nestedHashDirPath := s.StorageRoot + "/" + pathKey.DirPath
 
 	// makes the nested dirs
-	err := os.MkdirAll(s.root + "/" + pathKey.PathName, os.ModePerm)
+	err := os.MkdirAll(nestedHashDirPath, os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	fullPath := pathKey.FullPath()
-	f,err := os.Create(s.root + "/" + fullPath)
-	if err != nil {
-		return nil
-	}
-	
-	n, err := io.Copy(f,r)
+	fullPathWithRoot := s.StorageRoot + "/" + pathKey.FullPath
+
+	// creates the file
+	f, err := os.Create(fullPathWithRoot)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("written %v bytes to disk : %s",n,fullPath)
+	// writes bytes to file
+	n, err := io.Copy(f, r)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("written to disk","size", n,"path", pathKey.FullPath)
 
 	return nil
 }
 
-func (s *Store) ReadStream(key string) (io.ReadCloser,error) {
+func (s *FileStore) ReadStream(key string) (io.ReadCloser, error) {
 	pathKey := s.pathTransformFunc(key)
-	return os.Open(s.root + "/" + pathKey.FullPath())
+	return os.Open(s.StorageRoot + "/" + pathKey.FullPath)
 }
 
-func (s *Store) Read(key string) (io.Reader,error){
-	f,err := s.ReadStream(key)
+func (s *FileStore) Read(key string) (io.Reader, error) {
+	f, err := s.ReadStream(key)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	defer f.Close()
 
 	buff := new(bytes.Buffer)
-	_,err = io.Copy(buff,f)
-	return buff,err
+	_, err = io.Copy(buff, f)
+	return buff, err
 }
 
-func (s *Store) Delete(key string) error {
+func (s *FileStore) Delete(key string) error {
 	pathKey := s.pathTransformFunc(key)
 	defer func() {
-		fmt.Printf("delete [%s] from the disk",pathKey.FileName)
+		fmt.Printf("delete [%s] from the disk", pathKey.FileName)
 	}()
 
-	err := os.RemoveAll(s.root + "/" + pathKey.FirstPath)
+	err := os.RemoveAll(s.StorageRoot + "/" + pathKey.FirstDir)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Store) DeleteAll() error {
+func (s *FileStore) DeleteAll() error {
 	defer func() {
-		fmt.Printf("root dir deleted : %s",s.root)
+		fmt.Printf("root dir deleted : %s", s.StorageRoot)
 	}()
 
-	err := os.RemoveAll(s.root)
+	err := os.RemoveAll(s.StorageRoot)
 	if err != nil {
 		return err
 	}
 	return nil
 }
-
-
