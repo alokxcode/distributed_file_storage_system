@@ -125,32 +125,47 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 	// read loop
 
 	for {
-
 		rpc := RPC{}
-		var msgType [1]byte
-		peer.Conn.Read(msgType[:])
+		var reqType [1]byte
+		peer.Conn.Read(reqType[:])
+		
+		if reqType[0] == POSTReq {
+			fmt.Println("post req")
+			var msgType [1]byte
+			peer.Conn.Read(msgType[:])
 
-		if msgType[0] == MessageTypeGOB {
-			err = t.Decoder.GOBDecoder(peer.Conn, &rpc)
-			if  err != nil {
-				slog.Error("gob decoder failed to decode metadata","error", err)
-				continue
+			if msgType[0] == MessageTypeGOB {
+				err = t.Decoder.GOBDecoder(peer.Conn, &rpc)
+				if  err != nil {
+					slog.Error("gob decoder failed to decode metadata","error", err)
+					continue
+				}
 			}
+
+			var msgType2 [1]byte
+			peer.Conn.Read(msgType2[:])
+			if msgType2[0] == MessageTypeRaw{
+				err = t.Decoder.RawDecoder(peer.Conn,&rpc)
+				if err != nil {
+					slog.Error("default decoder failed to decode","error",err)
+					continue
+				}
+		
+			}
+		
+			rpc.From = peer.Conn.RemoteAddr()
+			t.rpcch <- rpc
+
 		}
 
-		var msgType2 [1]byte
-		peer.Conn.Read(msgType2[:])
-		if msgType2[0] == MessageTypeRaw{
-			err = t.Decoder.RawDecoder(peer.Conn,&rpc)
+		if reqType[0] == GETReq {
+			fmt.Println("GETReq")
+			err := t.Decoder.GOBDecoder(peer.Conn, &rpc)
 			if err != nil {
-				slog.Error("default decoder failed to decode","error",err)
 				continue
 			}
-	
+
 		}
-	
-		rpc.From = peer.Conn.RemoteAddr()
-		t.rpcch <- rpc
 	}
 }
 

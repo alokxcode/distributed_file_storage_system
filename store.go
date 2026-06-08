@@ -147,3 +147,20 @@ func (s *FileStore) DeleteAll() error {
 	}
 	return nil
 }
+
+func (s *FileStore) Has(key string) (io.Reader,error) {
+	pathKey := s.pathTransformFunc(key)
+
+	_,err := os.Stat(pathKey.FullPath)
+	if err != nil {
+		return nil,err
+	}
+
+	f,err := os.Open(pathKey.FullPath)
+	if err != nil {
+		return nil,err
+	}
+
+	return f,nil
+ 
+}

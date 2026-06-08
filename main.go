@@ -60,8 +60,18 @@ func main() {
 		Name: "test.jpeg",
 		Size: int64(len(testData)),
 	} 
+	slog.Info("testing store")
 	if err := s2.Store(file_metaData, bytes.NewReader(testData)); err != nil {
 		log.Fatal(err)
+	}
+
+	slog.Info("testing get")
+	r,err := s2.Get(file_metaData.Name)
+	if err != nil {
+		slog.Error("failed to get","error",err)
+	} else {
+
+		slog.Info("get successful","file",r)
 	}
 
 	select {}

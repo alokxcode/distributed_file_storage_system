@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 
 	"github.com/alokxcode/distributed_file_storage_system/p2p"
@@ -65,13 +66,36 @@ func (s *NodeServer) readloop() {
 	for {
 		select {
 		case msg := <-s.Transport.Consume():
-			slog.Info("writing to disk","size",len(msg.Payload), "payload", string(msg.Payload))
-			err := s.FileStore.WriteStream(msg.MetaData.Name,bytes.NewReader(msg.Payload))
-			if err != nil {
-				slog.Error("Failed to write payload on disk","payload",string(msg.Payload),"error",err)
-				return
+			if msg.ReqType == p2p.POSTReq {
+				slog.Info("writing to disk","size",len(msg.Payload), "payload", string(msg.Payload))
+				err := s.FileStore.WriteStream(msg.MetaData.Name,bytes.NewReader(msg.Payload))
+				if err != nil {
+					slog.Error("Failed to write payload on disk","payload",string(msg.Payload),"error",err)
+					return
+				}
 			}
+			if msg.ReqType == p2p.GETReq {
 
+				f,err := s.FileStore.Has(msg.MetaData.Name)
+				if err != nil {
+					return 
+				}
+
+				fileInfo, _ := f.(*os.File).Stat()
+
+				metadata := p2p.File_MetaData{
+					Name: msg.MetaData.Name,
+					Size: fileInfo.Size(),
+				}
+
+				msg.Peer.Write([]byte{p2p.POSTReq})
+
+				msg.Peer.Write([]byte{p2p.MessageTypeGOB})
+				gob.NewEncoder(msg.Peer).Encode(metadata)
+
+				msg.Peer.Write([]byte{p2p.MessageTypeRaw})
+				io.Copy(msg.Peer,f)
+			}
 		case <-s.quitch:
 			return
 		}
@@ -111,6 +135,7 @@ func (s *NodeServer) Broadcast(metaData p2p.File_MetaData, r io.Reader) error {
 
 
 	for _, p := range s.Peers {
+		p.Write([]byte{p2p.POSTReq})
 		p.Write([]byte{p2p.MessageTypeGOB})
 		enc := gob.NewEncoder(p)
 		enc.Encode(metaData)
@@ -147,4 +172,36 @@ func (s *NodeServer) BootStrapNetwork() error {
 
 func (s *NodeServer) Stop() {
 	close(s.quitch)
+}
+
+
+func (s *NodeServer) Get(key string) (io.Reader, error) {
+	// looks locally
+	f,err := s.FileStore.Has(key)
+	if err != nil {
+		if os.IsNotExist(err) {
+			slog.Error("File does not exist", "error", err)
+		}
+
+		s.BootStrapNetwork()
+		s.Fetch(key)
+
+	} 
+
+	return f,nil
+}
+
+func (s *NodeServer) Fetch(key string) {
+
+	metadata := p2p.File_MetaData {
+		Name: key,
+	}
+
+	for _,p := range s.Peers {
+		p.Write([]byte{p2p.GETReq})
+		err := gob.NewEncoder(p).Encode(metadata)
+		if err != nil {
+			return 
+		}
+	}
 }

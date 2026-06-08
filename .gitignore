@@ -1,3 +1,25 @@
-./bin/
-./":3000"/
-./":4000"/
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output files & generated storage directories (e.g., node storage root folders starting with ':')
+:*
+:*/
+alokxcode_Network/
+
+# IDE / System files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
